@@ -82,10 +82,10 @@ $('role').addEventListener('change',()=>capaRender());
 
 /* v0.5 quality management summary from local synthetic CAPA events only */
 const localDay=()=>{let d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
-function capaDate(x){if(!x)return '';let m=String(x).match(/(\\d{4})[\\/-](\\d{1,2})[\\/-](\\d{1,2})/);return m?m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0'):''}
+function capaDate(x){if(!x)return '';let m=String(x).match(/(\d{4})[\\/-](\d{1,2})[\\/-](\d{1,2})/);return m?m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0'):''}
 function monthOf(x){return capaDate(x).slice(0,7)}
 function eClosedInMonth(e,month){return (e.history||[]).some(h=>h.state==='已結案'&&monthOf(h.time)===month)}
-function overdue(e){return e.state!=='已結案'&&e.dueDate&&/^\\d{4}-\\d{2}-\\d{2}$/.test(e.dueDate)&&e.dueDate<localDay()}
+function overdue(e){return e.state!=='已結案'&&e.dueDate&&/^\d{4}-\d{2}-\d{2}$/.test(e.dueDate)&&e.dueDate<localDay()}
 function qualityReport(){let inp=$('qualityMonth');if(!inp)return;let month=inp.value||localDay().slice(0,7);if(!inp.value)inp.value=month;let created=capaEvents.filter(e=>monthOf(e.createdAt)===month),closed=capaEvents.filter(e=>eClosedInMonth(e,month)),open=capaEvents.filter(e=>e.state!=='已結案'),late=open.filter(overdue);
 $('qmNew').textContent=created.length;$('qmClosed').textContent=closed.length;$('qmOpen').textContent=open.length;$('qmOverdue').textContent=late.length;
 let base=new Date(month+'-01T12:00:00');if(Number.isNaN(base.getTime()))return;let months=[];for(let i=5;i>=0;i--){let d=new Date(base.getFullYear(),base.getMonth()-i,1),m=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');months.push({month:m,count:capaEvents.filter(e=>monthOf(e.createdAt)===m).length})}
