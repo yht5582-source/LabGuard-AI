@@ -68,3 +68,19 @@
 ## iPhone / ChatGPT preview troubleshooting (v0.2)
 
 Some ChatGPT file preview surfaces do not run embedded JavaScript; buttons in those previewers cannot function even when the HTML itself is correct. The top runtime status bar remains yellow when scripts are blocked and turns green when scripts run. Open with a regular browser from a trusted HTTPS host (e.g. GitHub Pages) for the most reliable phone experience. This prototype does not send data to a server. Mobile touch targets and sticky tabs were enlarged in v0.2.
+
+## v1.0.2 修正紀錄
+
+**錯誤修正**
+- 稽核／觀察員（唯讀）原本仍可修改 QC 目標 Mean／SD（會連帶改變 QC 判讀與會議報告），也可清空稽核紀錄；現已停用並在程式內再次阻擋。
+- CAPA 結案後又被主管退回調查的事件，原本仍計入「本月結案」；現在只計算目前仍為已結案者，並以最後一次結案時間為準。
+- 報告審核：負值結果原本被判為「危急低值」；現在標示 `RESULT_IMPLAUSIBLE` 並保留人工複核。負的前次值標示 `PREVIOUS_VALUE_IMPLAUSIBLE`，不參與 Delta 計算。
+- CSV 匯入：Excel 另存時尾端多出的空白欄（`,,`）與分號分隔檔原本整檔被拒；現可正常匯入（含內容的額外欄位仍會拒絕）。
+- KPI：不可登錄未來月份的數據；本機儲存中目標／警戒超出 0–100 的指標定義會被捨棄。品質月報不可在未來月份建立合成事件。
+- 會議報告中的追蹤事項原本一律顯示「追蹤中」，與下方表格的「逾期」不一致；現已統一。
+
+**優化**
+- 目前分頁記錄在網址 `#` 之後：重新整理會留在同一分頁，可直接分享特定分頁連結（例如 `…/LabGuard-AI/#kpi`）。
+- 依角色統一停用無權限的按鈕與輸入欄位，並以提示文字說明原因。
+- CAPA 連續「儲存欄位」只保留最後一筆歷程，避免歷程洗版與本機儲存無限增長。
+- 規則驗證中心新增 2 個案例（共 24 個）、內部回歸檢驗新增 3 項（共 18 項）。

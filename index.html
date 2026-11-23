@@ -144,7 +144,7 @@ tr.selected td { background: #eef7f8 }
   .shell { padding: 0; max-width: none }
   .section { display: none!important }
   #meeting { display: block!important }
-  #meeting>h2, #meeting>p.note { display: none }
+  #meeting>h2, #meeting>p.note, #meeting>.card:last-child>h3 { display: none }
   #meeting>.card:last-child { display: block!important; border: 0; box-shadow: none; padding: 0 }
   #meetReport { border: 0; background: #fff; padding: 0; font-size: 11pt }
   #meetReport h2 { font-size: 19pt }
@@ -157,7 +157,7 @@ tr.selected td { background: #eef7f8 }
 <header>
   <div>
     <div class="brand">◈ LabGuard <span>AI</span></div>
-    <small>區域教學醫院｜智慧醫檢品質與報告安全平台 · v1.0.1 整合驗證版</small>
+    <small>區域教學醫院｜智慧醫檢品質與報告安全平台 · v1.0.2 整合驗證版</small>
   </div>
   <div class="topright">
     <span class="pill">● 模擬／離線演示</span>
@@ -1245,7 +1245,7 @@ tr.selected td { background: #eef7f8 }
     </div>
   </section>
 
-  <div class="footer">LabGuard AI v1.0.1｜合成資料、規則引擎教學原型｜無外部連線、無病人資料儲存、無 LIS 寫入能力</div>
+  <div class="footer">LabGuard AI v1.0.2｜合成資料、規則引擎教學原型｜無外部連線、無病人資料儲存、無 LIS 寫入能力</div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </main>
 <script>
@@ -1253,7 +1253,7 @@ tr.selected td { background: #eef7f8 }
 'use strict';
 
 /* ============================================================
- * LabGuard AI v1.0.1 — 靜態前端原型（合成／去識別化資料）
+ * LabGuard AI v1.0.2 — 靜態前端原型（合成／去識別化資料）
  *  - 不對外連線；資料只存在頁面記憶體或本機 localStorage
  *  - 所有閾值與規則僅為教學示範，須經院內核定
  * 程式分區：共用工具 → 分頁 → 戰情室 → QC → 報告審核／規則驗證
@@ -1263,7 +1263,7 @@ tr.selected td { background: #eef7f8 }
  *         讓舊版 iOS／院內舊電腦的瀏覽器也能執行。
  * ============================================================ */
 
-const APP_VERSION = 'v1.0.1';
+const APP_VERSION = 'v1.0.2';
 
 /* 任何未預期的執行錯誤都顯示在頁面上（手機沒有主控台可看） */
 window.addEventListener('error', ev => {
@@ -1338,8 +1338,9 @@ function download(name, content) {
   // iOS Safari 會先跳出下載確認，使用者按下後才讀取檔案；太早撤銷網址會下載失敗，因此延後 60 秒
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-/** 解析 CSV 文字為二維陣列（支援引號、跳脫引號、CRLF；略過空白列） */
-function parseCSV(text) {
+/** 解析 CSV 文字為二維陣列（支援引號、跳脫引號、CRLF；略過空白列）。delim 省略時為逗號 */
+function parseCSV(text, delim) {
+  delim = delim || ',';
   const lines = [];
   let row = [], field = '', quoted = false;
   const endRow = () => {
@@ -1352,7 +1353,7 @@ function parseCSV(text) {
     const c = text[i];
     if (c === '"') {
       if (quoted && text[i + 1] === '"') { field += '"'; i++; } else quoted = !quoted;
-    } else if (c === ',' && !quoted) {
+    } else if (c === delim && !quoted) {
       row.push(field);
       field = '';
     } else if ((c === '\n' || c === '\r') && !quoted) {
@@ -1363,6 +1364,21 @@ function parseCSV(text) {
   if (quoted) throw Error('CSV 引號未閉合');
   if (field !== '' || row.length) endRow();
   return lines;
+}
+/**
+ * 解析使用者匯入的 CSV 並整理成固定欄數：
+ *  - 標題列沒有逗號但有分號時，視為分號分隔（部分地區設定的 Excel 會這樣輸出）
+ *  - Excel 另存時常在每列尾端多出空白欄（",,"）；超出 width 的欄位若全為空白就移除，
+ *    含有內容者保留，交由後續欄位檢查拒絕（不會悄悄丟掉資料）
+ */
+function parseImportCsv(text, width) {
+  const head = text.split(/\r?\n/, 1)[0];
+  const delim = head.indexOf(',') < 0 && head.indexOf(';') >= 0 ? ';' : ',';
+  return parseCSV(text, delim).map(r => {
+    let n = r.length;
+    while (n > width && r[n - 1].trim() === '') n--;
+    return n === r.length ? r : r.slice(0, n);
+  }).filter(r => r.some(v => v.trim() !== ''));
 }
 /** 讀取 CSV 檔：先以 UTF-8 解碼；若不是合法 UTF-8（常見於 Excel 另存的 Big5 檔）改用 Big5 */
 function readCsvFile(file) {
@@ -1481,6 +1497,7 @@ function initAudit() {
   $('exportAudit').onclick = () => download('labguard_audit_demo.csv',
     toCSV([['time', 'role', 'action', 'detail']].concat(audit.map(a => [a.time, a.role, a.action, a.detail]))));
   $('clearAudit').onclick = () => {
+    if (!can('manage')) return notify('清空稽核紀錄需要主管示範角色', 'bad');
     if (!audit.length) return notify('目前沒有可清空的紀錄');
     if (!confirm('確定清空本次工作階段的稽核紀錄？')) return;
     const n = audit.length;
@@ -1511,10 +1528,16 @@ const tabNav = document.querySelector('.tabs');
 /** 各分頁顯示時要執行的重新整理函式（跨模組資料、需要實際寬度的圖表） */
 const onShow = {};
 let activeTab = 'dashboard';
+const onTabList = name => tabButtons.some(t => t.dataset.tab === name);
+const hashTab = () => { try { return decodeURIComponent(location.hash.slice(1)); } catch (err) { return ''; } };
 
-function showTab(name) {
-  if (!$(name)) return;
+function showTab(name, keepUrl) {
+  if (!$(name) || !onTabList(name)) return;
   activeTab = name;
+  // 把目前分頁記在網址的 # 後面：重新整理會留在同一頁，也能直接分享特定分頁的連結
+  if (!keepUrl) {
+    try { history.replaceState(null, '', '#' + name); } catch (err) { /* 沙盒預覽環境可能禁止，忽略即可 */ }
+  }
   let activeBtn = null;
   tabButtons.forEach(t => {
     const on = t.dataset.tab === name;
@@ -1554,6 +1577,11 @@ function initTabs() {
     ev.preventDefault();
     showTab(tabButtons[j].dataset.tab);
     tabButtons[j].focus();
+  });
+  // 手動修改網址的 # 或按上一頁／下一頁時同步分頁
+  window.addEventListener('hashchange', () => {
+    const name = hashTab();
+    if (name !== activeTab && onTabList(name)) showTab(name, true);
   });
 }
 
@@ -1673,7 +1701,7 @@ function renderDashboard() {
 
 /** 驗證並轉換戰情室彙總 CSV；任何一列不合格即整檔拒絕 */
 function parseDashboardCsv(text) {
-  const lines = parseCSV(text);
+  const lines = parseImportCsv(text, CSV_COLS.length);
   if (!lines.length) throw Error('CSV 檔案是空的');
   const cols = lines.shift().map(c => c.trim());
   if (cols.length !== CSV_COLS.length || !CSV_COLS.every((c, i) => cols[i] === c)) throw Error('欄位不符範本，或包含額外敏感資料欄位');
@@ -1801,7 +1829,12 @@ function qcReadTargets() {
 }
 
 function showQC() {
-  if (!qcReadTargets()) {
+  // 唯讀角色不可變更 Mean／SD（欄位已停用；此處再擋一次，並把欄位還原為目前設定）
+  if (!can('operate')) {
+    const q = qcData[$('qcAnalyte').value];
+    $('qcMean').value = q.mean;
+    $('qcSD').value = q.sd;
+  } else if (!qcReadTargets()) {
     // 輸入無效時清空統計，避免畫面殘留舊結果（空白不可當成 0）
     ['qcZ', 'qcCount', 'qcCV'].forEach(id => { $(id).textContent = '—'; });
     $('qcState').innerHTML = '<span class="status info">待輸入</span>';
@@ -1911,10 +1944,13 @@ const isNum = x => typeof x === 'number' && Number.isFinite(x);
  */
 function evaluateReview(input) {
   const r = TEST_RULES[input.test], codes = [];
-  const hasValue = isNum(input.value), hasPrev = isNum(input.prev);
+  // 負值在這些檢驗項目不可能出現：視為輸入／傳輸錯誤，保留人工複核，不可判成「危急低值」
+  const implausible = isNum(input.value) && input.value < 0;
+  const hasValue = isNum(input.value) && !implausible, hasPrev = isNum(input.prev) && input.prev >= 0;
   const hasHours = isNum(input.hours) && input.hours > 0, hasHem = isNum(input.hem) && input.hem >= 0;
-  if (!hasValue) codes.push('RESULT_MISSING');
-  if (!hasPrev) codes.push('PREVIOUS_VALUE_MISSING');
+  if (implausible) codes.push('RESULT_IMPLAUSIBLE');
+  else if (!hasValue) codes.push('RESULT_MISSING');
+  if (!hasPrev) codes.push(isNum(input.prev) ? 'PREVIOUS_VALUE_IMPLAUSIBLE' : 'PREVIOUS_VALUE_MISSING');
   if (!hasHours) codes.push('DELTA_INTERVAL_UNKNOWN');
   if (!hasHem) codes.push('HEMOLYSIS_UNAVAILABLE');
   if (input.identity !== 'pass') codes.push('IDENTITY_NOT_VERIFIED');
@@ -1966,7 +2002,7 @@ function runReview() {
   if (reviews.length > REVIEW_MAX) reviews.length = REVIEW_MAX;
   $('reviewOutput').innerHTML =
     '<span class="status ' + o.tone + '">' + o.label + '</span>' +
-    '<div style="margin-top:10px"><b>' + esc(input.test) + '：' + (missing ? '缺漏' : input.value) + ' ' + TEST_RULES[input.test].unit + '</b></div>' +
+    '<div style="margin-top:10px"><b>' + esc(input.test) + '：' + (missing ? '缺漏' : esc(input.value)) + ' ' + TEST_RULES[input.test].unit + '</b></div>' +
     '<div>觸發規則：' + (res.codes.length ? res.codes.map(esc).join('、') : '無') + '</div>' +
     '<div style="margin-top:6px">' + o.advice + '</div>' +
     '<div class="small" style="margin-top:9px">閾值僅為演示；不代表臨床危急值標準。無患者身分與檢驗單位脈絡，不應用於臨床。</div>';
@@ -1983,9 +2019,21 @@ function renderReviews() {
 }
 
 /** 依角色啟用／停用需要「操作」權限的按鈕，並更新頁首權限提示 */
+const OPERATE_IDS = ['addQC', 'resetQC', 'qcAck', 'qcToCapa', 'qcMean', 'qcSD', 'qcValue', 'runReview', 'cSample', 'qualityDemo',
+  'impactAdd', 'meetAddTask', 'kpiSavePoint', 'kpiDeletePoint', 'kpiAddAction'];
+const MANAGE_IDS = ['clearAudit', 'cReset', 'impactClear', 'meetClearTasks', 'kpiExample', 'kpiSaveDefinition', 'kpiCreateDefinition'];
 function syncAccess() {
-  const operate = can('operate');
-  ['addQC', 'resetQC', 'qcAck', 'qcToCapa', 'runReview'].forEach(id => { $(id).disabled = !operate; });
+  const operate = can('operate'), manage = can('manage');
+  const gate = (ids, allowed, why) => ids.forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    el.disabled = !allowed;
+    el.title = allowed ? '' : why;
+  });
+  gate(OPERATE_IDS, operate, '目前角色為唯讀');
+  gate(MANAGE_IDS, manage, '需要主管示範角色');
+  const d = kpiDef();
+  $('kpiDeleteDefinition').disabled = !manage || !d || !kpiIsCustom(d);
   $('ackReview').disabled = !operate || !lastReview;
   const hint = $('roleHint');
   hint.textContent = ROLE_HINT[role];
@@ -2031,6 +2079,8 @@ const VALIDATION_FIXTURES = [
   fx('超出參考區間（非危急）', '人工複核', { test: 'K', value: 5.4, prev: 5.0 }),
   fx('溶血指數偏高（血鉀正常）', '人工複核', { test: 'K', value: 4.5, prev: 4.3, hem: 60 }),
   fx('Delta 間隔未知', '人工複核', { test: 'K', value: 4.2, prev: 4.1, hours: null }),
+  fx('負值結果（不合理，不可判為危急低值）', '人工複核', { test: 'K', value: -3, prev: 4.1 }),
+  fx('前值為負（不合理）', '人工複核', { test: 'K', value: 4.2, prev: -5 }),
   { name: 'QC 1₃s', kind: 'qc', z: [0, 0.5, 3.2], expect: '1₃s' },
   { name: 'QC 2₂s', kind: 'qc', z: [0, 2.3, 2.5], expect: '2₂s' },
   { name: 'QC 4₁s', kind: 'qc', z: [1.2, 1.4, 1.3, 1.5], expect: '4₁s' },
@@ -2204,7 +2254,10 @@ function capaSave() {
   if (!e || !can('operate') || e.state === CAPA_CLOSED) return capaNotice('本角色或目前狀態不可修改');
   capaReadForm(e);
   e.updatedAt = now();
-  e.history.push({ state: '儲存欄位', role, time: e.updatedAt });
+  // 同一角色連續儲存只保留最後一次，避免歷程被「儲存欄位」洗版並無限增長
+  const prev = last(e.history);
+  if (prev && prev.state === '儲存欄位' && prev.role === role) prev.time = e.updatedAt;
+  else e.history.push({ state: '儲存欄位', role, time: e.updatedAt });
   const saved = capaPersist();
   log('儲存CAPA欄位', e.id);
   capaRender(true);
@@ -2297,7 +2350,12 @@ function capaDate(x) {
   return m ? m[1] + '-' + pad2(m[2]) + '-' + pad2(m[3]) : '';
 }
 const monthOf = x => capaDate(x).slice(0, 7);
-const closedInMonth = (e, month) => e.history.some(h => h.state === CAPA_CLOSED && monthOf(h.time) === month);
+/** 是否於該月結案：只算「目前仍為已結案」的事件，並以最後一次結案時間為準（結案後又退回調查者不算） */
+function closedInMonth(e, month) {
+  if (e.state !== CAPA_CLOSED) return false;
+  const closes = e.history.filter(h => h.state === CAPA_CLOSED);
+  return closes.length > 0 && monthOf(last(closes).time) === month;
+}
 const overdue = e => e.state !== CAPA_CLOSED && DATE_RE.test(e.dueDate) && e.dueDate < localDay();
 
 /** 月報統計（畫面、匯出 CSV 與會議報告共用） */
@@ -2353,8 +2411,9 @@ function qualityReport() {
 function qualityDemo() {
   if (!can('operate')) return notify('請切換至醫檢師或主管示範角色', 'bad');
   if (capaEvents.length + 6 > CAPA_MAX) return notify('示範事件將超過 ' + CAPA_MAX + ' 筆上限，請先匯出後清空', 'bad');
-  if (!confirm('將新增 6 筆明確標示為合成資料的模擬 QC 事件。確定繼續？')) return;
   const today = localDay(), month = monthValue('qualityMonth');
+  if (month > today.slice(0, 7)) return notify('不可在未來月份建立事件，請選擇本月或過去的月份', 'bad');
+  if (!confirm('將新增 6 筆明確標示為合成資料的模擬 QC 事件。確定繼續？')) return;
   // 選到本月時，建立日期不超過今天
   const lastDay = month === today.slice(0, 7) ? Number(today.slice(8)) : 28;
   const examples = [
@@ -2514,7 +2573,7 @@ function tatValidateRow(r, i, seen) {
   if (r.delay_reason && TAT_REASONS.indexOf(r.delay_reason) < 0) throw Error(at + '延誤原因未列於選項');
 }
 function parseTatCsv(text) {
-  const lines = parseCSV(text);
+  const lines = parseImportCsv(text, TAT_COLS.length);
   if (!lines.length) throw Error('CSV 檔案是空的');
   const cols = lines.shift().map(c => c.trim());
   if (cols.length !== TAT_COLS.length || cols.some((v, i) => v !== TAT_COLS[i])) throw Error('欄位與 TAT 範本不符；禁止額外敏感欄位');
@@ -2799,7 +2858,7 @@ function meetingModel() {
   };
 }
 function meetingGenerate() {
-  const m = meetingModel();
+  const m = meetingModel(), today = localDay();
   const rate = m.tatRate === null ? '無資料' : m.tatRate.toFixed(1) + '%';
   const p95 = m.tatP95 === null ? '無資料' : m.tatP95.toFixed(1) + ' 分鐘';
   const item = (k, v, note) => '<div class="feature"><b>' + esc(k) + '</b>：' + esc(v) + '<div class="small">' + esc(note) + '</div></div>';
@@ -2820,7 +2879,7 @@ function meetingGenerate() {
     h3('四、改善議題與追蹤') +
     '<div class="feature">' + esc(m.notes || '尚未填入會議改善重點') + '</div>' +
     (m.tasks.length
-      ? m.tasks.map(x => '<div class="feature">' + esc(x.task) + ' — ' + esc(x.owner) + '／' + esc(x.due || '未設定期限') + '／' + (x.done ? '完成' : '追蹤中') + '</div>').join('')
+      ? m.tasks.map(x => '<div class="feature">' + esc(x.task) + ' — ' + esc(x.owner) + '／' + esc(x.due || '未設定期限') + '／' + taskState(x, today)[0] + '</div>').join('')
       : '<div class="note">目前沒有追蹤事項</div>') +
     h3('五、資料限制／確認事項') +
     '<p class="note">所有資料均為合成、暫存或去識別化分析原型。TAT 無日期欄位不能宣稱為本月資料。QC 與審核指標不代表院內實測成效。正式會議紀錄需核對原始證據、完整分母、區間、批准的 KPI 定義、主管簽核及文件版本。</p>';
@@ -2909,12 +2968,13 @@ function kpiGenerateDefaults() {
   });
   return out;
 }
-/** 整理從 localStorage 讀回的資料；結構不符時回傳 null（改用內建示範資料） */
+const inPct = n => Number.isFinite(n) && n >= 0 && n <= 100;
+/** 整理從 localStorage 讀回的資料；結構不符時回傳 null（改用內建示範資料）。目標／警戒不在 0–100 的指標捨棄 */
 function normalizeKpiStore(saved) {
   if (!saved || !Array.isArray(saved.definitions) || !Array.isArray(saved.points) || !Array.isArray(saved.actions)) return null;
   const definitions = saved.definitions
     .filter(d => d && typeof d.id === 'string' && d.id && typeof d.name === 'string' && d.name &&
-      (d.direction === 'high' || d.direction === 'low') && Number.isFinite(Number(d.target)) && Number.isFinite(Number(d.warning)))
+      (d.direction === 'high' || d.direction === 'low') && inPct(Number(d.target)) && inPct(Number(d.warning)))
     .slice(0, KPI_MAX_DEFS)
     .map(d => ({ id: d.id, name: d.name, numer: str(d.numer), denom: str(d.denom), direction: d.direction, target: Number(d.target), warning: Number(d.warning), source: str(d.source) }));
   if (!definitions.length) return null;
@@ -3040,7 +3100,7 @@ function kpiRenderData() {
     '<div class="small">' + esc(a.owner) + '｜' + esc(a.due || '未設定') + '｜' + (a.done ? '已完成' : '進行中') + '</div>' +
     '<button class="secondary kpiActionToggle" type="button" data-id="' + esc(a.id) + '">' + (a.done ? '重新開啟' : '標記完成') + '</button></div>'
   ).join('') || '<div class="note">無改善追蹤紀錄</div>';
-  $('kpiDeleteDefinition').disabled = !kpiIsCustom(d);       // 內建示範 KPI 不可刪除
+  $('kpiDeleteDefinition').disabled = !can('manage') || !kpiIsCustom(d);       // 內建示範 KPI 不可刪除
 }
 function kpiRenderAll() {
   kpiFillDefinition();
@@ -3119,6 +3179,7 @@ function kpiSavePoint() {
   if (numRaw === '' || denRaw === '' || !Number.isSafeInteger(num) || !Number.isSafeInteger(den) || den <= 0 || num < 0 || num > den || den > 1000000000) {
     return kpiMsg('請輸入有效分子／分母：非負整數、分母大於零、分子不得大於分母');
   }
+  if (month > localDay().slice(0, 7)) return kpiMsg('不可登錄未來月份的數據');
   const others = kpiStore.points.filter(p => !(p.id === d.id && p.month === month));
   if (others.length >= KPI_MAX_POINTS) return kpiMsg('本機月數據已達 ' + KPI_MAX_POINTS + ' 筆上限');
   kpiStore.points = others.concat([{ id: d.id, month, num, den, note: $('kpiNote').value.trim() }]);
@@ -3294,6 +3355,10 @@ function integrationSelfTest() {
   test('低方向異常', kpiStatus(3, { direction: 'low', target: 1, warning: 2 })[0] === '異常');
   test('日期正規化', capaDate('2026/11/21 10:00:00') === '2026-11-21' && capaDate('2026-3-5 09:00:00') === '2026-03-05');
   test('審核：正常案例為候選', evaluateReview(okInput).outcome === 'candidate');
+  test('審核：負值不可判為危急值', (r => r.outcome === 'hold' && r.codes.indexOf('RESULT_IMPLAUSIBLE') >= 0 && r.codes.indexOf('CRITICAL_VALUE') < 0)(evaluateReview(Object.assign({}, okInput, { value: -3 }))));
+  test('CSV 匯入：分號分隔與尾端空白欄', (r => r.length === 2 && r[0].length === 2 && r[1][1] === '2')(parseImportCsv('a;b;;\r\n1;2;;\r\n;;;\r\n', 2)));
+  test('CAPA：結案後退回不計入本月結案', !closedInMonth({ state: '調查中', history: [{ state: CAPA_CLOSED, time: '2026/11/02 09:00:00' }] }, '2026-11') &&
+    closedInMonth({ state: CAPA_CLOSED, history: [{ state: CAPA_CLOSED, time: '2026/10/30 09:00:00' }, { state: CAPA_CLOSED, time: '2026/11/02 09:00:00' }] }, '2026-11'));
   test('審核：缺漏值不可當成 0', evaluateReview(Object.assign({}, okInput, { value: null })).codes.indexOf('RESULT_MISSING') >= 0);
   test('CSV 解析：引號、逗號與空白列', parsed.length === 2 && parsed[0][1] === 'b,"c"' && parsed[1][1] === '2');
   test('CSV 匯出：中和公式字元', csvCell('=1+1') === '"\'=1+1"' && csvCell(-5) === '"-5"' && csvCell('-5.20') === '"-5.20"');
@@ -3329,6 +3394,7 @@ function initRole() {
   sel.onchange = () => {
     role = sel.value;
     syncAccess();
+    showQC();                             // 唯讀角色：把 Mean／SD 還原為目前設定
     capaRender(false);                    // 只更新按鈕狀態，保留尚未儲存的輸入
     log('切換展示角色', roleName(role));
   };
@@ -3364,6 +3430,8 @@ boot('KPI', initKpi);
 boot('資料整合', initIntegration);
 boot('權限同步', syncAccess);
 boot('視窗調整', initResize);
+// 網址帶有 #分頁名稱 時（重新整理或分享連結），直接開啟該分頁
+boot('分頁還原', () => { if (hashTab() !== activeTab && onTabList(hashTab())) showTab(hashTab(), true); });
 
 // 部分瀏覽器在頁面載入完成後才還原表單狀態（或從上一頁／下一頁快取返回）：顯示時再對齊一次
 window.addEventListener('pageshow', () => {
@@ -3376,6 +3444,7 @@ window.addEventListener('pageshow', () => {
   if (sel.value !== role && ROLE_LABEL[sel.value]) {
     role = sel.value;
     syncAccess();
+    showQC();
     capaRender(false);
   }
 });
